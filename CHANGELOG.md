@@ -1,3 +1,8 @@
+# Unreleased
+
+### Fixed
+-  `World::{query_one, query_one_mut}` allowed violating a unique borrow.
+
 # 0.9
 
 ### Changed
