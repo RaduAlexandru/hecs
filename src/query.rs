@@ -588,8 +588,8 @@ unsafe impl<'a, F: Fetch<'a>> Fetch<'a> for FetchSatisfies<F> {
         Self(false, PhantomData)
     }
 
-    fn access(archetype: &Archetype) -> Option<Access> {
-        F::access(archetype).map(|_| Access::Iterate)
+    fn access(_archetype: &Archetype) -> Option<Access> {
+        Some(Access::Iterate)
     }
 
     fn borrow(_archetype: &Archetype, _state: Self::State) {}
