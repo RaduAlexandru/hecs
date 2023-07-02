@@ -2,6 +2,7 @@
 
 ### Fixed
 -  `World::{query_one, query_one_mut}` allowed violating a unique borrow.
+- `CommandBuffer` now executes operations in the order they are recorded
 
 # 0.9
 
