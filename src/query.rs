@@ -12,7 +12,7 @@ use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 use core::slice::Iter as SliceIter;
 
-use crate::alloc::{boxed::Box, vec::Vec};
+use crate::alloc::boxed::Box;
 use crate::archetype::Archetype;
 use crate::entities::EntityMeta;
 use crate::{Component, Entity, World};
@@ -1076,6 +1076,7 @@ smaller_tuples_too!(tuple_impl, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
 pub struct PreparedQuery<Q: Query> {
     memo: (u64, u64),
     state: Box<[(usize, <Q::Fetch as Fetch<'static>>::State)]>,
+    fetch: Box<[Option<Q::Fetch>]>,
 }
 
 impl<Q: Query> Default for PreparedQuery<Q> {
@@ -1091,6 +1092,7 @@ impl<Q: Query> PreparedQuery<Q> {
             // This memo will not match any world as the first ID will be 1.
             memo: (0, 0),
             state: Default::default(),
+            fetch: Default::default(),
         }
     }
 
@@ -1104,7 +1106,9 @@ impl<Q: Query> PreparedQuery<Q> {
             .filter_map(|(idx, x)| Q::Fetch::prepare(x).map(|state| (idx, state)))
             .collect();
 
-        Self { memo, state }
+        let fetch = world.archetypes().map(|_| None).collect();
+
+        Self { memo, state, fetch }
     }
 
     /// Query `world`, using dynamic borrow checking
@@ -1119,7 +1123,7 @@ impl<Q: Query> PreparedQuery<Q> {
         let meta = world.entities_meta();
         let archetypes = world.archetypes_inner();
 
-        PreparedQueryBorrow::new(meta, archetypes, &*self.state)
+        PreparedQueryBorrow::new(meta, archetypes, &*self.state, &mut *self.fetch)
     }
 
     /// Query a uniquely borrowed world
@@ -1155,7 +1159,7 @@ impl<Q: Query> PreparedQuery<Q> {
         let state: &'q [(usize, <Q::Fetch as Fetch<'q>>::State)] =
             unsafe { mem::transmute(&*self.state) };
 
-        unsafe { PreparedView::new(meta, archetypes, state.iter()) }
+        unsafe { PreparedView::new(meta, archetypes, state.iter(), &mut *self.fetch) }
     }
 }
 
@@ -1164,6 +1168,7 @@ pub struct PreparedQueryBorrow<'q, Q: Query> {
     meta: &'q [EntityMeta],
     archetypes: &'q [Archetype],
     state: &'q [(usize, <Q::Fetch as Fetch<'static>>::State)],
+    fetch: &'q mut [Option<Q::Fetch>],
 }
 
 impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
@@ -1171,6 +1176,7 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
         meta: &'q [EntityMeta],
         archetypes: &'q [Archetype],
         state: &'q [(usize, <Q::Fetch as Fetch<'static>>::State)],
+        fetch: &'q mut [Option<Q::Fetch>],
     ) -> Self {
         for (idx, state) in state {
             Q::Fetch::borrow(&archetypes[*idx], *state);
@@ -1180,6 +1186,7 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
             meta,
             archetypes,
             state,
+            fetch,
         }
     }
 
@@ -1197,7 +1204,7 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
         let state: &'i [(usize, <Q::Fetch as Fetch<'i>>::State)] =
             unsafe { mem::transmute(self.state) };
 
-        unsafe { PreparedView::new(self.meta, self.archetypes, state.iter()) }
+        unsafe { PreparedView::new(self.meta, self.archetypes, state.iter(), self.fetch) }
     }
 }
 
@@ -1289,7 +1296,7 @@ impl<Q: Query> ExactSizeIterator for PreparedQueryIter<'_, Q> {
 /// Provides random access to the results of a prepared query
 pub struct PreparedView<'q, Q: Query> {
     meta: &'q [EntityMeta],
-    fetch: Vec<Option<Q::Fetch>>,
+    fetch: &'q mut [Option<Q::Fetch>],
 }
 
 impl<'q, Q: Query> PreparedView<'q, Q> {
@@ -1301,8 +1308,9 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
         meta: &'q [EntityMeta],
         archetypes: &'q [Archetype],
         state: SliceIter<'q, (usize, <Q::Fetch as Fetch<'q>>::State)>,
+        fetch: &'q mut [Option<Q::Fetch>],
     ) -> Self {
-        let mut fetch = (0..archetypes.len()).map(|_| None).collect::<Vec<_>>();
+        fetch.iter_mut().for_each(|fetch| *fetch = None);
 
         for (idx, state) in state {
             let archetype = &archetypes[*idx];
