@@ -851,7 +851,7 @@ impl World {
                 // Update components in the current archetype
                 let arch = &mut self.archetypes.archetypes[loc.archetype as usize];
                 components.put(|ptr, ty| {
-                    arch.put_dynamic(ptr, ty.id(), ty.layout().size(), loc.index);
+                    arch.put_dynamic(ptr, ty.id(), ty.layout().size(), loc.index, false, true);
                 });
                 return Ok(bundle);
             }
@@ -869,7 +869,15 @@ impl World {
 
             // Move the new components
             components.put(|ptr, ty| {
-                target_arch.put_dynamic(ptr, ty.id(), ty.layout().size(), target_index);
+                let had_component = source_arch.has_dynamic(ty.id());
+                target_arch.put_dynamic(
+                    ptr,
+                    ty.id(),
+                    ty.layout().size(),
+                    target_index,
+                    !had_component,
+                    had_component,
+                );
             });
 
             // Move the components we're keeping
@@ -877,7 +885,14 @@ impl World {
                 let src = source_arch
                     .get_dynamic(ty.id(), ty.layout().size(), old_index)
                     .unwrap();
-                target_arch.put_dynamic(src.as_ptr(), ty.id(), ty.layout().size(), target_index)
+                target_arch.put_dynamic(
+                    src.as_ptr(),
+                    ty.id(),
+                    ty.layout().size(),
+                    target_index,
+                    false,
+                    false,
+                )
             }
 
             // Free storage in the old archetype
