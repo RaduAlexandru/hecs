@@ -73,7 +73,7 @@ mod take;
 mod tracked;
 mod world;
 
-pub use archetype::{Archetype, ArchetypeColumn};
+pub use archetype::{Archetype, ArchetypeColumn, ArchetypeColumnMut};
 pub use batch::{BatchIncomplete, BatchWriter, ColumnBatch, ColumnBatchBuilder, ColumnBatchType};
 pub use bundle::{Bundle, DynamicBundle, DynamicBundleClone, MissingComponent};
 pub use column::{Column, ColumnMut};
