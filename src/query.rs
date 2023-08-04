@@ -727,8 +727,8 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
     }
 }
 
-unsafe impl<'w, Q: Query> Send for QueryBorrow<'w, Q> {}
-unsafe impl<'w, Q: Query> Sync for QueryBorrow<'w, Q> {}
+unsafe impl<'w, Q: Query> Send for QueryBorrow<'w, Q> where <Q::Fetch as Fetch<'w>>::Item: Send {}
+unsafe impl<'w, Q: Query> Sync for QueryBorrow<'w, Q> where <Q::Fetch as Fetch<'w>>::Item: Send {}
 
 impl<'w, Q: Query> Drop for QueryBorrow<'w, Q> {
     fn drop(&mut self) {
@@ -772,8 +772,8 @@ impl<'q, Q: Query> QueryIter<'q, Q> {
     }
 }
 
-unsafe impl<'q, Q: Query> Send for QueryIter<'q, Q> {}
-unsafe impl<'q, Q: Query> Sync for QueryIter<'q, Q> {}
+unsafe impl<'q, Q: Query> Send for QueryIter<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
+unsafe impl<'q, Q: Query> Sync for QueryIter<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
 
 impl<'q, Q: Query> Iterator for QueryIter<'q, Q> {
     type Item = (Entity, QueryItem<'q, Q>);
@@ -955,8 +955,8 @@ impl<'q, Q: Query> BatchedIter<'q, Q> {
     }
 }
 
-unsafe impl<'q, Q: Query> Send for BatchedIter<'q, Q> {}
-unsafe impl<'q, Q: Query> Sync for BatchedIter<'q, Q> {}
+unsafe impl<'q, Q: Query> Send for BatchedIter<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
+unsafe impl<'q, Q: Query> Sync for BatchedIter<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
 
 impl<'q, Q: Query> Iterator for BatchedIter<'q, Q> {
     type Item = Batch<'q, Q>;
@@ -1017,8 +1017,8 @@ impl<'q, Q: Query> Iterator for Batch<'q, Q> {
     }
 }
 
-unsafe impl<'q, Q: Query> Send for Batch<'q, Q> {}
-unsafe impl<'q, Q: Query> Sync for Batch<'q, Q> {}
+unsafe impl<'q, Q: Query> Send for Batch<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
+unsafe impl<'q, Q: Query> Sync for Batch<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
 
 macro_rules! tuple_impl {
     ($($name: ident),*) => {
@@ -1256,8 +1256,10 @@ impl<'q, Q: Query> PreparedQueryIter<'q, Q> {
     }
 }
 
-unsafe impl<Q: Query> Send for PreparedQueryIter<'_, Q> {}
-unsafe impl<Q: Query> Sync for PreparedQueryIter<'_, Q> {}
+unsafe impl<'q, Q: Query> Send for PreparedQueryIter<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send
+{}
+unsafe impl<'q, Q: Query> Sync for PreparedQueryIter<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send
+{}
 
 impl<'q, Q: Query> Iterator for PreparedQueryIter<'q, Q> {
     type Item = (Entity, QueryItem<'q, Q>);
@@ -1311,6 +1313,9 @@ pub struct View<'q, Q: Query> {
     meta: &'q [EntityMeta],
     fetch: Vec<Option<Q::Fetch>>,
 }
+
+unsafe impl<'q, Q: Query> Send for View<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
+unsafe impl<'q, Q: Query> Sync for View<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
 
 impl<'q, Q: Query> View<'q, Q> {
     /// # Safety
@@ -1415,6 +1420,9 @@ pub struct PreparedView<'q, Q: Query> {
     meta: &'q [EntityMeta],
     fetch: &'q mut [Option<Q::Fetch>],
 }
+
+unsafe impl<'q, Q: Query> Send for PreparedView<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
+unsafe impl<'q, Q: Query> Sync for PreparedView<'q, Q> where <Q::Fetch as Fetch<'q>>::Item: Send {}
 
 impl<'q, Q: Query> PreparedView<'q, Q> {
     /// # Safety
