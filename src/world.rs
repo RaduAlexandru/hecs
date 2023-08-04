@@ -428,7 +428,7 @@ impl World {
         QueryMut::new(&self.entities.meta, &mut self.archetypes.archetypes)
     }
 
-    pub(crate) fn memo(&self) -> (u64, u64) {
+    pub(crate) fn memo(&self) -> (u64, u32) {
         (self.id, self.archetypes.generation())
     }
 
@@ -1163,7 +1163,7 @@ impl<A: DynamicBundle> core::iter::FromIterator<A> for World {
 
 /// Determines freshness of information derived from [`World::archetypes`]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ArchetypesGeneration(u64);
+pub struct ArchetypesGeneration(u32);
 
 /// Entity IDs created by [`World::spawn_batch`]
 pub struct SpawnBatchIter<'a, I>
@@ -1322,8 +1322,8 @@ impl ArchetypeSet {
         }
     }
 
-    fn generation(&self) -> u64 {
-        self.archetypes.len() as u64
+    fn generation(&self) -> u32 {
+        self.archetypes.len() as u32
     }
 
     fn get_insert_target(&mut self, src: u32, components: &impl DynamicBundle) -> InsertTarget {
