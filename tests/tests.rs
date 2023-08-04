@@ -876,3 +876,28 @@ fn column_get_mut() {
     }
     assert_eq!(*world.get::<i32>(ent).unwrap(), 99);
 }
+
+#[test]
+fn change_detection() {
+    let mut world = World::new();
+    let _ = world.spawn((123,));
+    for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+        assert_eq!(*value, 123);
+        assert_eq!(value_ch, true);
+    }
+    world.clear_trackers();
+    for (_id, value_ch) in world.query::<Changed<i32>>().iter() {
+        assert_eq!(value_ch, false);
+    }
+    for (_id, mut value) in world.query::<&mut i32>().iter() {
+        *value = 42;
+    }
+    for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+        assert_eq!(*value, 42);
+        assert_eq!(value_ch, true);
+    }
+    world.clear_trackers();
+    for (_id, value_ch) in world.query::<Changed<i32>>().iter() {
+        assert_eq!(value_ch, false);
+    }
+}
