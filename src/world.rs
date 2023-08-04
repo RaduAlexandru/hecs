@@ -580,7 +580,8 @@ impl World {
         self.flush();
 
         let loc = self.entities.get(entity)?;
-        self.insert_inner(entity, components, loc.archetype, loc)
+        self.insert_inner(entity, components, loc.archetype, loc);
+        Ok(())
     }
 
     /// The implementation backing [`insert`](Self::insert) exposed so that it can also be used by [`exchange`](Self::exchange).
@@ -594,7 +595,7 @@ impl World {
         components: impl DynamicBundle,
         graph_origin: u32,
         loc: Location,
-    ) -> Result<(), NoSuchEntity> {
+    ) {
         let target_storage;
         let target = match components.key() {
             None => {
@@ -626,7 +627,7 @@ impl World {
                 components.put(|ptr, ty| {
                     arch.put_dynamic(ptr, ty.id(), ty.layout().size(), loc.index, false, true);
                 });
-                return Ok(());
+                return;
             }
 
             let (source_arch, target_arch) = index2(
@@ -674,7 +675,6 @@ impl World {
                 self.entities.meta[moved as usize].location.index = loc.index;
             }
         }
-        Ok(())
     }
 
     /// Add `component` to `entity`
@@ -819,7 +819,7 @@ impl World {
         let intermediate =
             Self::remove_target::<S>(&mut self.archetypes, &mut self.remove_edges, loc.archetype);
 
-        self.insert_inner(entity, components, intermediate, loc)?;
+        self.insert_inner(entity, components, intermediate, loc);
 
         Ok(bundle)
     }
