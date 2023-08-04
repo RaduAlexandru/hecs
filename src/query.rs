@@ -655,6 +655,9 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
             return;
         }
         for x in self.archetypes {
+            if x.is_empty() {
+                continue;
+            }
             // TODO: Release prior borrows on failure?
             if let Some(state) = Q::Fetch::prepare(x) {
                 Q::Fetch::borrow(x, state);
@@ -732,6 +735,9 @@ impl<'w, Q: Query> Drop for QueryBorrow<'w, Q> {
     fn drop(&mut self) {
         if self.borrowed {
             for x in self.archetypes {
+                if x.is_empty() {
+                    continue;
+                }
                 if let Some(state) = Q::Fetch::prepare(x) {
                     Q::Fetch::release(x, state);
                 }
@@ -1190,6 +1196,9 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
         fetch: &'q mut [Option<Q::Fetch>],
     ) -> Self {
         for (idx, state) in state {
+            if archetypes[*idx].is_empty() {
+                continue;
+            }
             Q::Fetch::borrow(&archetypes[*idx], *state);
         }
 
@@ -1222,6 +1231,9 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
 impl<Q: Query> Drop for PreparedQueryBorrow<'_, Q> {
     fn drop(&mut self) {
         for (idx, state) in self.state {
+            if self.archetypes[*idx].is_empty() {
+                continue;
+            }
             Q::Fetch::release(&self.archetypes[*idx], *state);
         }
     }
