@@ -72,7 +72,7 @@ pub mod serialize;
 mod tracked;
 mod world;
 
-pub use archetype::{Archetype, ColumnRef};
+pub use archetype::{Archetype, ArchetypeColumn};
 pub use batch::{BatchIncomplete, BatchWriter, ColumnBatch, ColumnBatchBuilder, ColumnBatchType};
 pub use bundle::{Bundle, DynamicBundle, MissingComponent};
 pub use column::{Column, ColumnMut};
