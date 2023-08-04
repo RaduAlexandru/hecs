@@ -69,6 +69,7 @@ mod query;
 mod query_one;
 #[cfg(any(feature = "row-serialize", feature = "column-serialize"))]
 pub mod serialize;
+mod take;
 mod tracked;
 mod world;
 
@@ -86,6 +87,7 @@ pub use query::{
     With, Without,
 };
 pub use query_one::QueryOne;
+pub use take::TakenEntity;
 pub use tracked::{Added, Changed, Mutated};
 pub use world::{
     ArchetypesGeneration, Component, ComponentError, Iter, QueryOneError, SpawnBatchIter,
