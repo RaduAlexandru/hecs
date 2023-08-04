@@ -901,3 +901,16 @@ fn change_detection() {
         assert_eq!(value_ch, false);
     }
 }
+
+#[test]
+fn len() {
+    let mut world = World::new();
+    let ent = world.spawn(());
+    world.spawn(());
+    world.spawn(());
+    assert_eq!(world.len(), 3);
+    world.despawn(ent).unwrap();
+    assert_eq!(world.len(), 2);
+    world.clear();
+    assert_eq!(world.len(), 0);
+}
