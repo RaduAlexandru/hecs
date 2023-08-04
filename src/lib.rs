@@ -70,7 +70,7 @@ pub mod serialize;
 mod tracked;
 mod world;
 
-pub use archetype::Archetype;
+pub use archetype::{Archetype, ColumnRef};
 pub use batch::{BatchIncomplete, BatchWriter, ColumnBatch, ColumnBatchBuilder, ColumnBatchType};
 pub use bundle::{Bundle, DynamicBundle, MissingComponent};
 pub use entities::{Entity, NoSuchEntity};
