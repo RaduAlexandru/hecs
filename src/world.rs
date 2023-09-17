@@ -508,6 +508,11 @@ impl World {
         Ok(self.entity(entity)?.satisfies::<Q>())
     }
 
+    /// Short-hand for [`entity`](Self::entity) followed by [`EntityRef::has`]
+    pub fn has<T: Component>(&self, entity: Entity) -> Result<bool, NoSuchEntity> {
+        Ok(self.entity(entity)?.has::<T>())
+    }
+
     /// Access an entity regardless of its component types
     ///
     /// Does not immediately borrow any component.
