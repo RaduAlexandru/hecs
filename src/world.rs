@@ -11,6 +11,7 @@ use core::borrow::Borrow;
 use core::convert::TryFrom;
 use core::hash::{BuildHasherDefault, Hasher};
 use spin::Mutex;
+// use std::println;
 
 use core::{fmt, ptr};
 
@@ -932,6 +933,24 @@ impl World {
     pub fn clear_trackers(&mut self) {
         for archetype in &mut self.archetypes.archetypes {
             archetype.clear_trackers();
+        }
+
+        self.removed_components.clear();
+    }
+
+    /// Each entity's component "added" state will be reset to `true`.
+    pub fn set_trackers_added(&mut self) {
+        for archetype in &mut self.archetypes.archetypes {
+            archetype.set_trackers_added();
+        }
+
+        self.removed_components.clear();
+    }
+
+    /// Each entity's component "mutated" state will be reset to `true`.
+    pub fn set_trackers_changed(&mut self) {
+        for archetype in &mut self.archetypes.archetypes {
+            archetype.set_trackers_changed();
         }
 
         self.removed_components.clear();

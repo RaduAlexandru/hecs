@@ -16,6 +16,14 @@ use hashbrown::hash_map::Entry;
 use crate::archetype::{TypeIdMap, TypeInfo};
 use crate::{align, Component, ComponentRef, ComponentRefShared, DynamicBundle};
 
+//in order to avoid using the entityBuilder as a component we deimplement send and sync for it so it cannot be used as a component.
+//this is a very hacky thing and we should think of a better way to avoid it but since hecs doesn't support nested bundles, it's kinda tricky.
+// use negative_impl::negative_impl;
+// #[negative_impl]
+// impl !Send for EntityBuilder {}
+// #[negative_impl]
+// impl !Sync for EntityBuilder {}
+
 /// Helper for incrementally constructing a bundle of components with dynamic component types
 ///
 /// Prefer reusing the same builder over creating new ones repeatedly.

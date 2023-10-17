@@ -13,6 +13,7 @@ use core::fmt;
 use core::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use core::ops::{Deref, DerefMut};
 use core::ptr::{self, NonNull};
+// use std::println;
 
 use hashbrown::{hash_map::DefaultHashBuilder, HashMap};
 
@@ -134,6 +135,24 @@ impl Archetype {
             }
             for added in data.added_entities.iter_mut() {
                 *added = false;
+            }
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub(crate) fn set_trackers_added(&mut self) {
+        for data in self.data.iter_mut() {
+            for added in data.added_entities.iter_mut() {
+                *added = true;
+            }
+        }
+    }
+
+    #[allow(missing_docs)]
+    pub(crate) fn set_trackers_changed(&mut self) {
+        for data in self.data.iter_mut() {
+            for mutated in data.mutated_entities.iter_mut() {
+                *mutated = true;
             }
         }
     }
