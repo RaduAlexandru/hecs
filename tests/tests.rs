@@ -992,6 +992,93 @@ fn change_detection() {
 }
 
 #[test]
+fn change_detection_and_command_buffer() {
+    let mut world = World::new();
+    let ent = world.spawn((123,));
+    for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+        assert_eq!(*value, 123);
+        assert_eq!(value_ch, true);
+    }
+    //add more component using a command buffer
+    let mut command_buffer = CommandBuffer::new();
+    command_buffer.insert_one(ent, "123".to_string());
+    command_buffer.run_on(&mut world);
+
+    //the changed flag for the int should still be true
+    for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+        assert_eq!(*value, 123);
+        assert_eq!(value_ch, true);
+    }
+}
+
+// have an entity with two struct that contain the same thing, just that the structs are named differently
+// change detection should run fine for adding these components
+// clear trackers
+// run a query and if the components are present, add another component that is unrelated through a command buffer
+// the original components should not be changed
+struct Comp1 {
+    num: u32,
+}
+struct Comp2 {
+    num: u32,
+}
+struct VisComp {
+    num: u32,
+}
+#[test]
+fn change_detection_and_command_buffer_2() {
+    let mut world = World::new();
+    let mut command_buffer = CommandBuffer::new();
+
+    //add and check the detection is correct
+    let ent = world.spawn((Comp1 { num: 0 }, Comp2 { num: 1 }));
+    for (_id, (value_ch)) in world.query::<(Changed<Comp2>)>().iter() {
+        assert_eq!(value_ch, true);
+    }
+    world.clear_trackers();
+
+    //after clearing, the change detection should be false
+    for (_id, (value_ch)) in world.query::<(Changed<Comp1>)>().iter() {
+        assert_eq!(value_ch, false);
+    }
+    for (_id, (value_ch)) in world.query::<(Changed<Comp2>)>().iter() {
+        assert_eq!(value_ch, false);
+    }
+
+    //add vis
+    {
+        let mut query = world
+            .query::<()>()
+            .with::<(&Comp1, &Comp2)>()
+            .without::<&VisComp>();
+        for (entity, _comp) in query.iter() {
+            command_buffer.insert_one(entity, VisComp { num: 3 });
+        }
+    }
+    command_buffer.run_on(&mut world);
+
+    //the comp1 and comp2 should still be unchanged
+    let query = world
+        .query_mut::<(&Comp1, &Comp2, Changed<Comp1>, Changed<Comp2>)>()
+        .with::<&Comp1>();
+    for (ent, (comp1, comp2, changed_comp1, changed_comp2)) in query {
+        assert_eq!(changed_comp1, false);
+        assert_eq!(changed_comp2, false);
+    }
+
+    // //add more component using a command buffer
+    // let mut command_buffer = CommandBuffer::new();
+    // command_buffer.insert_one(ent, "123".to_string());
+    // command_buffer.run_on(&mut world);
+
+    // //the changed flag for the int should still be true
+    // for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+    //     assert_eq!(*value, 123);
+    //     assert_eq!(value_ch, true);
+    // }
+}
+
+#[test]
 fn len() {
     let mut world = World::new();
     let ent = world.spawn(());

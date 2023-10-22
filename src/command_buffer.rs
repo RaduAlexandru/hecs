@@ -196,6 +196,16 @@ impl CommandBuffer {
         }
         self.cmds.clear();
     }
+
+    /// Number of commands
+    pub fn len(&mut self) -> usize {
+        self.cmds.len()
+    }
+
+    /// check if there were any commands recorded
+    pub fn is_empty(&mut self) -> bool {
+        self.cmds.is_empty()
+    }
 }
 
 unsafe impl Send for CommandBuffer {}
