@@ -1020,7 +1020,7 @@ struct Comp {
     num: u32,
 }
 struct VisComp {
-    name: String,
+    val: f32,
 }
 #[test]
 fn change_detection_and_command_buffer_2() {
@@ -1039,23 +1039,11 @@ fn change_detection_and_command_buffer_2() {
         assert_eq!(value_ch, false);
     }
 
-    //add vis
-    {
-        let mut query = world.query::<()>();
-        for (entity, _comp) in query.iter() {
-            command_buffer.insert_one(
-                entity,
-                VisComp {
-                    name: "name".to_string(),
-                },
-            );
-        }
-    }
-    command_buffer.run_on(&mut world);
+    //add another component
+    world.insert_one(ent, VisComp { val: 3.0 });
 
     //the Comp should still be unchanged
-    let query = world.query_mut::<Changed<Comp>>();
-    for (ent, (changed_comp)) in query {
+    for (ent, (changed_comp)) in world.query::<Changed<Comp>>().iter() {
         assert_eq!(changed_comp, false);
     }
 }
