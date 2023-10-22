@@ -669,13 +669,17 @@ impl World {
                 let src = source_arch
                     .get_dynamic(ty.id(), ty.layout().size(), loc.index)
                     .unwrap();
+                //copy to the new archetype also the added and mutated flags
+                let state = source_arch.get_state_by_id(&ty.id()).unwrap();
+                let added = *source_arch.get_added(state).as_ptr();
+                let mutated = *source_arch.get_mutated(state).as_ptr();
                 target_arch.put_dynamic(
                     src.as_ptr(),
                     ty.id(),
                     ty.layout().size(),
                     target_index,
-                    false,
-                    false,
+                    added,
+                    mutated,
                 )
             }
 

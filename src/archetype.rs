@@ -428,12 +428,14 @@ impl Archetype {
         mutated: bool,
     ) {
         let data = self.data.get_unchecked_mut(*self.index.get(&ty).unwrap());
-        if added {
-            data.added_entities[index as usize] = true;
-        }
-        if mutated {
-            data.mutated_entities[index as usize] = true;
-        }
+        // if added {
+        //     data.added_entities[index as usize] = true;
+        // }
+        // if mutated {
+        //     data.mutated_entities[index as usize] = true;
+        // }
+        data.added_entities[index as usize] = added;
+        data.mutated_entities[index as usize] = mutated;
         let ptr = self
             .get_dynamic(ty, size, index)
             .unwrap()
