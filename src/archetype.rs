@@ -8,6 +8,7 @@
 use crate::alloc::alloc::{alloc, dealloc, Layout};
 use crate::alloc::boxed::Box;
 use crate::alloc::{vec, vec::Vec};
+use crate::std::string::ToString;
 use core::any::{type_name, TypeId};
 use core::fmt;
 use core::hash::{BuildHasher, BuildHasherDefault, Hasher};
@@ -597,7 +598,7 @@ impl TypeInfo {
             id: TypeId::of::<T>(),
             layout: Layout::new::<T>(),
             drop: drop_ptr::<T>,
-            #[cfg(debug_assertions)]
+            // #[cfg(debug_assertions)]
             type_name: core::any::type_name::<T>(),
         }
     }
@@ -611,7 +612,7 @@ impl TypeInfo {
             id,
             layout,
             drop,
-            #[cfg(debug_assertions)]
+            // #[cfg(debug_assertions)]
             type_name: "<unknown> (TypeInfo constructed from parts)",
         }
     }
@@ -624,6 +625,11 @@ impl TypeInfo {
     /// Access the `Layout` of this component type.
     pub fn layout(&self) -> Layout {
         self.layout
+    }
+
+    /// Access the `Layout` of this component type.
+    pub fn name(&self) -> std::string::String {
+        self.type_name.to_string()
     }
 
     /// Directly call the destructor on a pointer to data of this component type.

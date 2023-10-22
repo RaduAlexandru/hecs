@@ -5,7 +5,7 @@ use core::ptr::NonNull;
 use crate::archetype::Archetype;
 use crate::{
     ArchetypeColumn, ArchetypeColumnMut, Component, Entity, Fetch, MissingComponent, Query,
-    QueryOne,
+    QueryOne, TypeInfo,
 };
 
 /// Handle to an entity with any component types
@@ -91,6 +91,12 @@ impl<'a> EntityRef<'a> {
     /// despawning to maintain secondary indices.
     pub fn component_types(&self) -> impl Iterator<Item = TypeId> + 'a {
         self.archetype.types().iter().map(|ty| ty.id())
+    }
+
+    /// Enumate the type info of the entity components
+    /// Useful for inspecting the name of all the components
+    pub fn component_infos(&self) -> impl Iterator<Item = TypeInfo> + 'a {
+        self.archetype.types().iter().copied()
     }
 
     /// Number of components in this entity
