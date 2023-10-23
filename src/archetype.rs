@@ -585,7 +585,7 @@ pub struct TypeInfo {
     id: TypeId,
     layout: Layout,
     drop: unsafe fn(*mut u8),
-    #[cfg(debug_assertions)]
+    // #[cfg(debug_assertions)]
     type_name: &'static str,
 }
 
