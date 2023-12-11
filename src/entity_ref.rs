@@ -120,6 +120,7 @@ pub struct Ref<'a, T: Component> {
     /// State index for `T` in `archetype`
     state: usize,
     target: NonNull<T>,
+    index: u32,
 }
 
 impl<'a, T: Component> Ref<'a, T> {
@@ -137,7 +138,30 @@ impl<'a, T: Component> Ref<'a, T> {
             archetype,
             state,
             target,
+            index,
         })
+    }
+    pub fn is_added(&self) -> bool {
+        unsafe {
+            *self
+                .archetype
+                .get_added(self.state)
+                .as_ptr()
+                .add(self.index as usize)
+        }
+    }
+    //keep this one private to the crate because it makes things confusing. I only want added and changed. Changed will be true if it's either added or mutated
+    pub(crate) fn is_mutated(&self) -> bool {
+        unsafe {
+            *self
+                .archetype
+                .get_mutated(self.state)
+                .as_ptr()
+                .add(self.index as usize)
+        }
+    }
+    pub fn is_changed(&self) -> bool {
+        self.is_added() || self.is_mutated()
     }
 }
 
@@ -163,6 +187,7 @@ pub struct RefMut<'a, T: Component> {
     /// State index for `T` in `archetype`
     state: usize,
     target: NonNull<T>,
+    index: u32,
     mutated: &'a mut bool,
 }
 
@@ -182,8 +207,31 @@ impl<'a, T: Component> RefMut<'a, T> {
             archetype,
             state,
             target,
+            index,
             mutated,
         })
+    }
+    pub fn is_added(&self) -> bool {
+        unsafe {
+            *self
+                .archetype
+                .get_added(self.state)
+                .as_ptr()
+                .add(self.index as usize)
+        }
+    }
+    //keep this one private to the crate because it makes things confusing. I only want added and changed. Changed will be true if it's either added or mutated
+    pub(crate) fn is_mutated(&self) -> bool {
+        unsafe {
+            *self
+                .archetype
+                .get_mutated(self.state)
+                .as_ptr()
+                .add(self.index as usize)
+        }
+    }
+    pub fn is_changed(&self) -> bool {
+        self.is_added() || self.is_mutated()
     }
 }
 

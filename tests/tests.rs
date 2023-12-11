@@ -1048,6 +1048,59 @@ fn change_detection_and_command_buffer_2() {
     }
 }
 
+//the query for changed should not run for a component that does not exist
+#[test]
+fn change_detection_non_existant_comp() {
+    let mut world = World::new();
+    let _ = world.spawn(("abc".to_string(),));
+
+    let mut query_ran = false;
+    for (_id, value_ch) in world.query::<Changed<i32>>().iter() {
+        query_ran = true;
+    }
+    assert_eq!(query_ran, false);
+}
+
+//tests that the newly added functions of is_added and is_mutated work correctly
+#[test]
+fn change_detection_direct() {
+    let mut world = World::new();
+    let ent1 = world.spawn((123,));
+    let ent2_res = world.spawn(("abc".to_string(),));
+    for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+        assert_eq!(*value, 123);
+        assert_eq!(value_ch, true);
+        //check that the resource in ent2_res is both added and mutated
+        let res = world.entity(ent2_res).unwrap().get::<&String>().unwrap();
+        assert_eq!(res.is_added(), true);
+        assert_eq!(res.is_changed(), true);
+    }
+    world.clear_trackers();
+
+    for (_id, value_ch) in world.query::<Changed<i32>>().iter() {
+        assert_eq!(value_ch, false);
+        //check that the resource in ent2_res is neither mutated not added
+        let res = world.entity(ent2_res).unwrap().get::<&String>().unwrap();
+        assert_eq!(res.is_added(), false);
+        assert_eq!(res.is_changed(), false);
+    }
+
+    //modify the res
+    for (_id, mut value) in world.query::<&mut String>().iter() {
+        *value = "aaa".to_string();
+    }
+    for (_id, (value, value_ch)) in world.query::<(&i32, Changed<i32>)>().iter() {
+        //check that the resource in ent2_res is only mutated
+        let res = world.entity(ent2_res).unwrap().get::<&String>().unwrap();
+        assert_eq!(res.is_added(), false);
+        assert_eq!(res.is_changed(), true);
+    }
+    world.clear_trackers();
+    for (_id, value_ch) in world.query::<Changed<i32>>().iter() {
+        assert_eq!(value_ch, false);
+    }
+}
+
 #[test]
 fn len() {
     let mut world = World::new();
