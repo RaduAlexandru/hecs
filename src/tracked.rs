@@ -1,4 +1,5 @@
-use core::{any::TypeId, marker::PhantomData, ptr::NonNull};
+use crate::stabletypeid::StableTypeId;
+use core::{marker::PhantomData, ptr::NonNull};
 
 use crate::{Access, Archetype, Component, Fetch, Query};
 
@@ -64,8 +65,8 @@ unsafe impl<'a, T: Component> Fetch<'a> for FetchMutated<T> {
     }
     fn release(_archetype: &Archetype, _state: Self::State) {}
 
-    fn for_each_borrow(mut f: impl FnMut(TypeId, bool)) {
-        f(TypeId::of::<T>(), false);
+    fn for_each_borrow(mut f: impl FnMut(StableTypeId, bool)) {
+        f(StableTypeId::of::<T>(), false);
     }
 
     unsafe fn get(&self, n: usize) -> Self::Item {
@@ -127,8 +128,8 @@ unsafe impl<'a, T: Component> Fetch<'a> for FetchAdded<T> {
     }
     fn release(_archetype: &Archetype, _state: Self::State) {}
 
-    fn for_each_borrow(mut f: impl FnMut(TypeId, bool)) {
-        f(TypeId::of::<T>(), false);
+    fn for_each_borrow(mut f: impl FnMut(StableTypeId, bool)) {
+        f(StableTypeId::of::<T>(), false);
     }
 
     unsafe fn get(&self, n: usize) -> Self::Item {
@@ -206,8 +207,8 @@ unsafe impl<'a, T: Component> Fetch<'a> for FetchChanged<T> {
     }
     fn release(_archetype: &Archetype, _state: Self::State) {}
 
-    fn for_each_borrow(mut f: impl FnMut(TypeId, bool)) {
-        f(TypeId::of::<T>(), false);
+    fn for_each_borrow(mut f: impl FnMut(StableTypeId, bool)) {
+        f(StableTypeId::of::<T>(), false);
     }
 
     unsafe fn get(&self, n: usize) -> Self::Item {

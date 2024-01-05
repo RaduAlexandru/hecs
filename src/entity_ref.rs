@@ -1,4 +1,5 @@
-use core::any::TypeId;
+// use core::any::StableTypeId;
+use crate::stabletypeid::StableTypeId;
 use core::ops::{Deref, DerefMut};
 use core::ptr::NonNull;
 
@@ -86,10 +87,10 @@ impl<'a> EntityRef<'a> {
     /// Enumerate the types of the entity's components
     ///
     /// Convenient for dispatching component-specific logic for a single entity. For example, this
-    /// can be combined with a `HashMap<TypeId, Box<dyn Handler>>` where `Handler` is some
+    /// can be combined with a `HashMap<StableTypeId, Box<dyn Handler>>` where `Handler` is some
     /// user-defined trait with methods for serialization, or to be called after spawning or before
     /// despawning to maintain secondary indices.
-    pub fn component_types(&self) -> impl Iterator<Item = TypeId> + 'a {
+    pub fn component_types(&self) -> impl Iterator<Item = StableTypeId> + 'a {
         self.archetype.types().iter().map(|ty| ty.id())
     }
 

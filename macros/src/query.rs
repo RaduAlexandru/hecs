@@ -162,7 +162,7 @@ pub fn derive(input: DeriveInput) -> Result<TokenStream2> {
             }
 
             #[allow(unused_variables, unused_mut)]
-            fn for_each_borrow(mut f: impl ::core::ops::FnMut(::core::any::TypeId, bool)) {
+            fn for_each_borrow(mut f: impl ::core::ops::FnMut(::hecs::StableTypeId, bool)) {
                 #(
                     <#fetches as ::hecs::Fetch<'static>>::for_each_borrow(&mut f);
                 )*

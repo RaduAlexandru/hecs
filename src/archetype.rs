@@ -9,7 +9,9 @@ use crate::alloc::alloc::{alloc, dealloc, Layout};
 use crate::alloc::boxed::Box;
 use crate::alloc::{vec, vec::Vec};
 use crate::std::string::ToString;
-use core::any::{type_name, TypeId};
+// use core::any::{type_name, TypeId};
+use crate::stabletypeid::StableTypeId;
+use core::any::type_name;
 use core::fmt;
 use core::hash::{BuildHasher, BuildHasherDefault, Hasher};
 use core::ops::{Deref, DerefMut};
@@ -28,8 +30,8 @@ use crate::{Access, Component, ComponentRef, Query};
 /// [`World`](crate::World).
 pub struct Archetype {
     types: Vec<TypeInfo>,
-    type_ids: Box<[TypeId]>,
-    index: OrderedTypeIdMap<usize>,
+    type_ids: Box<[StableTypeId]>,
+    index: OrderedStableTypeIdMap<usize>,
     len: u32,
     entities: Box<[u32]>,
     /// One allocation per type, in the same order as `types`
@@ -60,7 +62,7 @@ impl Archetype {
         Self::assert_type_info(&types);
         let component_count = types.len();
         Self {
-            index: OrderedTypeIdMap::new(types.iter().enumerate().map(|(i, ty)| (ty.id, i))),
+            index: OrderedStableTypeIdMap::new(types.iter().enumerate().map(|(i, ty)| (ty.id, i))),
             type_ids: types.iter().map(|ty| ty.id()).collect(),
             types,
             entities: Box::new([]),
@@ -90,21 +92,21 @@ impl Archetype {
 
     /// Whether this archetype contains `T` components
     pub fn has<T: Component>(&self) -> bool {
-        self.has_dynamic(TypeId::of::<T>())
+        self.has_dynamic(StableTypeId::of::<T>())
     }
 
     /// Whether this archetype contains components with the type identified by `id`
-    pub fn has_dynamic(&self, id: TypeId) -> bool {
+    pub fn has_dynamic(&self, id: StableTypeId) -> bool {
         self.index.contains_key(&id)
     }
 
     /// Find the state index associated with `T`, if present
     pub(crate) fn get_state<T: Component>(&self) -> Option<usize> {
-        self.index.get(&TypeId::of::<T>()).copied()
+        self.index.get(&StableTypeId::of::<T>()).copied()
     }
 
-    /// Find the state index associated with `TypeId`, if present
-    pub(crate) fn get_state_by_id(&self, id: &TypeId) -> Option<usize> {
+    /// Find the state index associated with `StableTypeId`, if present
+    pub(crate) fn get_state_by_id(&self, id: &StableTypeId) -> Option<usize> {
         self.index.get(id).copied()
     }
 
@@ -160,7 +162,7 @@ impl Archetype {
 
     /// Get the address of the first `T` component using an index from `get_state::<T>`
     pub(crate) fn get_base<T: Component>(&self, state: usize) -> NonNull<T> {
-        assert_eq!(self.types[state].id, TypeId::of::<T>());
+        assert_eq!(self.types[state].id, StableTypeId::of::<T>());
 
         unsafe {
             NonNull::new_unchecked(
@@ -179,7 +181,7 @@ impl Archetype {
     }
 
     pub(crate) fn borrow<T: Component>(&self, state: usize) {
-        assert_eq!(self.types[state].id, TypeId::of::<T>());
+        assert_eq!(self.types[state].id, StableTypeId::of::<T>());
 
         if !self.data[state].state.borrow() {
             panic!("{} already borrowed uniquely", type_name::<T>());
@@ -187,7 +189,7 @@ impl Archetype {
     }
 
     pub(crate) fn borrow_mut<T: Component>(&self, state: usize) {
-        assert_eq!(self.types[state].id, TypeId::of::<T>());
+        assert_eq!(self.types[state].id, StableTypeId::of::<T>());
 
         if !self.data[state].state.borrow_mut() {
             panic!("{} already borrowed", type_name::<T>());
@@ -195,12 +197,12 @@ impl Archetype {
     }
 
     pub(crate) fn release<T: Component>(&self, state: usize) {
-        assert_eq!(self.types[state].id, TypeId::of::<T>());
+        assert_eq!(self.types[state].id, StableTypeId::of::<T>());
         self.data[state].state.release();
     }
 
     pub(crate) fn release_mut<T: Component>(&self, state: usize) {
-        assert_eq!(self.types[state].id, TypeId::of::<T>());
+        assert_eq!(self.types[state].id, StableTypeId::of::<T>());
         self.data[state].state.release_mut();
     }
 
@@ -234,7 +236,7 @@ impl Archetype {
         &self.types
     }
 
-    pub(crate) fn type_ids(&self) -> &[TypeId] {
+    pub(crate) fn type_ids(&self) -> &[StableTypeId] {
         &self.type_ids
     }
 
@@ -252,14 +254,14 @@ impl Archetype {
     /// [`EntityRef::component_types`](crate::EntityRef::component_types).
     ///
     /// [`Entity`]: crate::Entity
-    pub fn component_types(&self) -> impl ExactSizeIterator<Item = TypeId> + '_ {
+    pub fn component_types(&self) -> impl ExactSizeIterator<Item = StableTypeId> + '_ {
         self.types.iter().map(|typeinfo| typeinfo.id)
     }
 
     /// `index` must be in-bounds or just past the end
     pub(crate) unsafe fn get_dynamic(
         &self,
-        ty: TypeId,
+        ty: StableTypeId,
         size: usize,
         index: u32,
     ) -> Option<NonNull<u8>> {
@@ -394,7 +396,7 @@ impl Archetype {
     pub(crate) unsafe fn move_to(
         &mut self,
         index: u32,
-        mut f: impl FnMut(*mut u8, TypeId, usize, bool, bool),
+        mut f: impl FnMut(*mut u8, StableTypeId, usize, bool, bool),
     ) -> Option<u32> {
         let last = self.len - 1;
         for (ty, data) in self.types.iter().zip(&mut *self.data) {
@@ -421,7 +423,7 @@ impl Archetype {
     pub(crate) unsafe fn put_dynamic(
         &mut self,
         component: *mut u8,
-        ty: TypeId,
+        ty: StableTypeId,
         size: usize,
         index: u32,
         added: bool,
@@ -509,23 +511,23 @@ struct Data {
     added_entities: Vec<bool>,
 }
 
-/// A hasher optimized for hashing a single TypeId.
+/// A hasher optimized for hashing a single StableTypeId.
 ///
-/// TypeId is already thoroughly hashed, so there's no reason to hash it again.
+/// StableTypeId is already thoroughly hashed, so there's no reason to hash it again.
 /// Just leave the bits unchanged.
 #[derive(Default)]
-pub(crate) struct TypeIdHasher {
+pub(crate) struct StableTypeIdHasher {
     hash: u64,
 }
 
-impl Hasher for TypeIdHasher {
+impl Hasher for StableTypeIdHasher {
     fn write_u64(&mut self, n: u64) {
         // Only a single value can be hashed, so the old hash should be zero.
         debug_assert_eq!(self.hash, 0);
         self.hash = n;
     }
 
-    // Tolerate TypeId being either u64 or u128.
+    // Tolerate StableTypeId being either u64 or u128.
     fn write_u128(&mut self, n: u128) {
         debug_assert_eq!(self.hash, 0);
         self.hash = n as u64;
@@ -534,7 +536,7 @@ impl Hasher for TypeIdHasher {
     fn write(&mut self, bytes: &[u8]) {
         debug_assert_eq!(self.hash, 0);
 
-        // This will only be called if TypeId is neither u64 nor u128, which is not anticipated.
+        // This will only be called if StableTypeId is neither u64 nor u128, which is not anticipated.
         // In that case we'll just fall back to using a different hash implementation.
         let mut hasher = <DefaultHashBuilder as BuildHasher>::Hasher::default();
         hasher.write(bytes);
@@ -546,43 +548,44 @@ impl Hasher for TypeIdHasher {
     }
 }
 
-/// A HashMap with TypeId keys
+/// A HashMap with StableTypeId keys
 ///
-/// Because TypeId is already a fully-hashed u64 (including data in the high seven bits,
+/// Because StableTypeId is already a fully-hashed u64 (including data in the high seven bits,
 /// which hashbrown needs), there is no need to hash it again. Instead, this uses the much
 /// faster no-op hash.
-pub(crate) type TypeIdMap<V> = HashMap<TypeId, V, BuildHasherDefault<TypeIdHasher>>;
+pub(crate) type StableTypeIdMap<V> =
+    HashMap<StableTypeId, V, BuildHasherDefault<StableTypeIdHasher>>;
 
-struct OrderedTypeIdMap<V>(Box<[(TypeId, V)]>);
+struct OrderedStableTypeIdMap<V>(Box<[(StableTypeId, V)]>);
 
-impl<V> OrderedTypeIdMap<V> {
-    fn new(iter: impl Iterator<Item = (TypeId, V)>) -> Self {
+impl<V> OrderedStableTypeIdMap<V> {
+    fn new(iter: impl Iterator<Item = (StableTypeId, V)>) -> Self {
         let mut vals = iter.collect::<Box<[_]>>();
         vals.sort_unstable_by_key(|(id, _)| *id);
         Self(vals)
     }
 
-    fn search(&self, id: &TypeId) -> Option<usize> {
+    fn search(&self, id: &StableTypeId) -> Option<usize> {
         self.0.binary_search_by_key(id, |(id, _)| *id).ok()
     }
 
-    fn contains_key(&self, id: &TypeId) -> bool {
+    fn contains_key(&self, id: &StableTypeId) -> bool {
         self.search(id).is_some()
     }
 
-    fn get(&self, id: &TypeId) -> Option<&V> {
+    fn get(&self, id: &StableTypeId) -> Option<&V> {
         self.search(id).map(move |idx| &self.0[idx].1)
     }
 }
 
 /// Metadata required to store a component.
 ///
-/// All told, this means a [`TypeId`], to be able to dynamically name/check the component type; a
+/// All told, this means a [`StableTypeId`], to be able to dynamically name/check the component type; a
 /// [`Layout`], so that we know how to allocate memory for this component type; and a drop function
 /// which internally calls [`core::ptr::drop_in_place`] with the correct type parameter.
 #[derive(Debug, Copy, Clone)]
 pub struct TypeInfo {
-    id: TypeId,
+    id: StableTypeId,
     layout: Layout,
     drop: unsafe fn(*mut u8),
     // #[cfg(debug_assertions)]
@@ -597,7 +600,7 @@ impl TypeInfo {
         }
 
         Self {
-            id: TypeId::of::<T>(),
+            id: StableTypeId::of::<T>(),
             layout: Layout::new::<T>(),
             drop: drop_ptr::<T>,
             // #[cfg(debug_assertions)]
@@ -609,7 +612,7 @@ impl TypeInfo {
     /// some kind of pointer to raw bytes/erased memory holding a component type, coming from a
     /// source unrelated to hecs, and you want to treat it as an insertable component by
     /// implementing the `DynamicBundle` API.
-    pub fn from_parts(id: TypeId, layout: Layout, drop: unsafe fn(*mut u8)) -> Self {
+    pub fn from_parts(id: StableTypeId, layout: Layout, drop: unsafe fn(*mut u8)) -> Self {
         Self {
             id,
             layout,
@@ -619,8 +622,8 @@ impl TypeInfo {
         }
     }
 
-    /// Access the `TypeId` for this component type.
-    pub fn id(&self) -> TypeId {
+    /// Access the `StableTypeId` for this component type.
+    pub fn id(&self) -> StableTypeId {
         self.id
     }
 
@@ -658,7 +661,7 @@ impl PartialOrd for TypeInfo {
 }
 
 impl Ord for TypeInfo {
-    /// Order by alignment, descending. Ties broken with TypeId.
+    /// Order by alignment, descending. Ties broken with StableTypeId.
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.layout
             .align()

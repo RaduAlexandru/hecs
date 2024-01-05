@@ -42,7 +42,7 @@ use crate::{
 /// # struct Position([f32; 3]);
 /// # #[derive(Serialize)]
 /// # struct Velocity([f32; 3]);
-/// use std::any::TypeId;
+/// use std::any::StableTypeId;
 /// use hecs::{*, serialize::column::*};
 ///
 /// #[derive(Serialize, Deserialize)]
@@ -53,7 +53,7 @@ use crate::{
 /// impl SerializeContext for Context {
 ///     fn component_count(&self, archetype: &Archetype) -> usize {
 ///         archetype.component_types()
-///             .filter(|&t| t == TypeId::of::<Position>() || t == TypeId::of::<Velocity>())
+///             .filter(|&t| t == StableTypeId::of::<Position>() || t == StableTypeId::of::<Velocity>())
 ///             .count()
 ///     }
 ///

@@ -6,7 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::alloc::{vec, vec::Vec};
-use core::any::TypeId;
+// use core::any::StableTypeId;
+use crate::stabletypeid::StableTypeId;
 use core::borrow::Borrow;
 use core::convert::TryFrom;
 use core::hash::{BuildHasherDefault, Hasher};
@@ -21,7 +22,7 @@ use std::error::Error;
 use hashbrown::hash_map::{Entry, HashMap};
 
 use crate::alloc::boxed::Box;
-use crate::archetype::{Archetype, TypeIdMap, TypeInfo};
+use crate::archetype::{Archetype, StableTypeIdMap, TypeInfo};
 use crate::entities::{Entities, EntityMeta, Location, ReserveEntitiesIterator};
 use crate::query::assert_borrow;
 use crate::{
@@ -51,15 +52,15 @@ pub struct World {
     entities: Entities,
     archetypes: ArchetypeSet,
     /// Maps statically-typed bundle types to archetypes
-    bundle_to_archetype: TypeIdMap<u32>,
+    bundle_to_archetype: StableTypeIdMap<u32>,
     /// Maps source archetype and static bundle types to the archetype that an entity is moved to
     /// after inserting the components from that bundle.
-    insert_edges: IndexTypeIdMap<InsertTarget>,
+    insert_edges: IndexStableTypeIdMap<InsertTarget>,
     /// Maps source archetype and static bundle types to the archetype that an entity is moved to
     /// after removing the components from that bundle.
-    remove_edges: IndexTypeIdMap<u32>,
+    remove_edges: IndexStableTypeIdMap<u32>,
     id: u64,
-    removed_components: HashMap<TypeId, Vec<Entity>>,
+    removed_components: HashMap<StableTypeId, Vec<Entity>>,
 }
 
 impl World {
@@ -336,7 +337,7 @@ impl World {
         let archetypes = &mut self.archetypes;
         let archetype_id = *self
             .bundle_to_archetype
-            .entry(TypeId::of::<T>())
+            .entry(StableTypeId::of::<T>())
             .or_insert_with(|| {
                 T::with_static_ids(|ids| {
                     archetypes.get(ids, || T::with_static_type_info(|info| info.to_vec()))
@@ -561,7 +562,7 @@ impl World {
     #[allow(missing_docs)]
     pub fn removed<C: Component>(&self) -> &[Entity] {
         self.removed_components
-            .get(&TypeId::of::<C>())
+            .get(&StableTypeId::of::<C>())
             .map_or(&[], |entities| entities.as_slice())
     }
 
@@ -779,10 +780,10 @@ impl World {
 
     fn remove_target<T: Bundle + 'static>(
         archetypes: &mut ArchetypeSet,
-        remove_edges: &mut IndexTypeIdMap<u32>,
+        remove_edges: &mut IndexStableTypeIdMap<u32>,
         old_archetype: u32,
     ) -> u32 {
-        match remove_edges.entry((old_archetype, TypeId::of::<T>())) {
+        match remove_edges.entry((old_archetype, StableTypeId::of::<T>())) {
             Entry::Occupied(entry) => *entry.into_mut(),
             Entry::Vacant(entry) => {
                 let info = T::with_static_type_info(|removed| {
@@ -1252,7 +1253,7 @@ impl Drop for SpawnColumnBatchIter<'_> {
 
 struct ArchetypeSet {
     /// Maps sorted component type sets to archetypes
-    index: HashMap<Box<[TypeId]>, u32>,
+    index: HashMap<Box<[StableTypeId]>, u32>,
     archetypes: Vec<Archetype>,
 }
 
@@ -1266,7 +1267,7 @@ impl ArchetypeSet {
     }
 
     /// Find the archetype ID that has exactly `components`
-    fn get<T: Borrow<[TypeId]> + Into<Box<[TypeId]>>>(
+    fn get<T: Borrow<[StableTypeId]> + Into<Box<[StableTypeId]>>>(
         &mut self,
         components: T,
         info: impl FnOnce() -> Vec<TypeInfo>,
@@ -1277,7 +1278,7 @@ impl ArchetypeSet {
             .unwrap_or_else(|| self.insert(components.into(), info()))
     }
 
-    fn insert(&mut self, components: Box<[TypeId]>, info: Vec<TypeInfo>) -> u32 {
+    fn insert(&mut self, components: Box<[StableTypeId]>, info: Vec<TypeInfo>) -> u32 {
         let x = self.archetypes.len() as u32;
         self.archetypes.push(Archetype::new(info));
         let old = self.index.insert(components, x);
@@ -1365,12 +1366,13 @@ struct InsertTarget {
     index: u32,
 }
 
-type IndexTypeIdMap<V> = HashMap<(u32, TypeId), V, BuildHasherDefault<IndexTypeIdHasher>>;
+type IndexStableTypeIdMap<V> =
+    HashMap<(u32, StableTypeId), V, BuildHasherDefault<IndexStableTypeIdHasher>>;
 
 #[derive(Default)]
-struct IndexTypeIdHasher(u64);
+struct IndexStableTypeIdHasher(u64);
 
-impl Hasher for IndexTypeIdHasher {
+impl Hasher for IndexStableTypeIdHasher {
     fn write_u32(&mut self, index: u32) {
         self.0 ^= u64::from(index);
     }
