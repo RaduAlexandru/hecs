@@ -11,12 +11,16 @@ use core::mem;
 use core::ops::Range;
 use core::ptr::{self, NonNull};
 
-use crate::alloc::alloc::{alloc, dealloc, Layout};
+// use crate::alloc::alloc::{alloc, dealloc, Layout};
+use crate::alloc::alloc::{alloc, dealloc};
 use crate::alloc::vec::Vec;
 use crate::archetype::TypeInfo;
+use crate::layout::Layout;
 use crate::{align, DynamicBundle};
 use crate::{Bundle, Entity};
 use crate::{Component, World};
+use abi_stable::std_types::{RBox, RHashMap, RNone, ROption, RSlice, RSome, RVec, Tuple2};
+use abi_stable::StableAbi;
 
 /// Records operations for future application to a [`World`]
 ///
@@ -31,13 +35,16 @@ use crate::{Component, World};
 /// cmd.run_on(&mut world); // cmd can now be reused
 /// assert_eq!(*world.get::<&i32>(entity).unwrap(), 42);
 /// ```
+///
+#[repr(C)]
+#[derive(StableAbi)]
 pub struct CommandBuffer {
-    cmds: Vec<Cmd>,
+    cmds: RVec<Cmd>,
     storage: NonNull<u8>,
     layout: Layout,
     cursor: usize,
-    components: Vec<ComponentInfo>,
-    ids: Vec<StableTypeId>,
+    components: RVec<ComponentInfo>,
+    ids: RVec<StableTypeId>,
 }
 
 impl CommandBuffer {
@@ -53,7 +60,9 @@ impl CommandBuffer {
         storage: NonNull<u8>,
     ) -> (NonNull<u8>, Layout) {
         let layout = Layout::from_size_align(min_size.next_power_of_two().max(64), align).unwrap();
-        let new_storage = NonNull::new_unchecked(alloc(layout));
+        let core_layout =
+            core::alloc::Layout::from_size_align(layout.size(), layout.align()).unwrap();
+        let new_storage = NonNull::new_unchecked(alloc(core_layout));
         ptr::copy_nonoverlapping(storage.as_ptr(), new_storage.as_ptr(), cursor);
         (new_storage, layout)
     }
@@ -62,11 +71,14 @@ impl CommandBuffer {
         let offset = align(self.cursor, ty.layout().align());
         let end = offset + ty.layout().size();
 
+        let core_layout =
+            core::alloc::Layout::from_size_align(self.layout.size(), self.layout.align()).unwrap();
+
         if end > self.layout.size() || ty.layout().align() > self.layout.align() {
             let new_align = self.layout.align().max(ty.layout().align());
             let (new_storage, new_layout) = Self::grow(end, self.cursor, new_align, self.storage);
             if self.layout.size() != 0 {
-                dealloc(self.storage.as_ptr(), self.layout);
+                dealloc(self.storage.as_ptr(), core_layout);
             }
             self.storage = new_storage;
             self.layout = new_layout;
@@ -90,8 +102,10 @@ impl CommandBuffer {
         }
         self.components[first_component..].sort_unstable_by_key(|c| c.ty);
         self.cmds.push(Cmd::SpawnOrInsert(EntityIndex {
-            entity: Some(entity),
-            components: first_component..self.components.len(),
+            entity: RSome(entity),
+            // components: first_component..self.components.len(),
+            component_range_start: first_component,
+            component_range_end: self.components.len(),
         }));
     }
 
@@ -106,7 +120,10 @@ impl CommandBuffer {
     ///
     /// When removing a single component, see [`remove_one`](Self::remove_one) for convenience.
     pub fn remove<T: Bundle + 'static>(&mut self, ent: Entity) {
-        fn remove_bundle_and_ignore_result<T: Bundle + 'static>(world: &mut World, ents: Entity) {
+        extern "C" fn remove_bundle_and_ignore_result<T: Bundle + 'static>(
+            world: &mut World,
+            ents: Entity,
+        ) {
             let _ = world.remove::<T>(ents);
         }
         self.cmds.push(Cmd::Remove(RemovedComps {
@@ -138,8 +155,10 @@ impl CommandBuffer {
         }
         self.components[first_component..].sort_unstable_by_key(|c| c.ty);
         self.cmds.push(Cmd::SpawnOrInsert(EntityIndex {
-            entity: None,
-            components: first_component..self.components.len(),
+            entity: RNone,
+            // components: first_component..self.components.len(),
+            component_range_start: first_component,
+            component_range_end: self.components.len(),
         }));
     }
 
@@ -148,13 +167,17 @@ impl CommandBuffer {
         for i in 0..self.cmds.len() {
             match mem::replace(&mut self.cmds[i], Cmd::Despawn(Entity::DANGLING)) {
                 Cmd::SpawnOrInsert(entity) => {
-                    let components = self.build(entity.components);
+                    let components_range = std::ops::Range {
+                        start: entity.component_range_start,
+                        end: entity.component_range_end,
+                    };
+                    let components = self.build(components_range);
                     match entity.entity {
-                        Some(entity) => {
+                        RSome(entity) => {
                             // If `entity` no longer exists, quietly drop the components.
                             let _ = world.insert(entity, components);
                         }
-                        None => {
+                        RNone => {
                             world.spawn(components);
                         }
                     }
@@ -214,10 +237,12 @@ unsafe impl Sync for CommandBuffer {}
 
 impl Drop for CommandBuffer {
     fn drop(&mut self) {
+        let core_layout =
+            core::alloc::Layout::from_size_align(self.layout.size(), self.layout.align()).unwrap();
         self.clear();
         if self.layout.size() != 0 {
             unsafe {
-                dealloc(self.storage.as_ptr(), self.layout);
+                dealloc(self.storage.as_ptr(), core_layout);
             }
         }
     }
@@ -227,12 +252,12 @@ impl Default for CommandBuffer {
     /// Create an empty buffer
     fn default() -> Self {
         Self {
-            cmds: Vec::new(),
+            cmds: RVec::new(),
             storage: NonNull::dangling(),
             layout: Layout::from_size_align(0, 8).unwrap(),
             cursor: 0,
-            components: Vec::new(),
-            ids: Vec::new(),
+            components: RVec::new(),
+            ids: RVec::new(),
         }
     }
 }
@@ -279,6 +304,8 @@ impl Drop for RecordedEntity<'_> {
 }
 
 /// Data required to store components and their offset  
+#[repr(C)]
+#[derive(StableAbi)]
 struct ComponentInfo {
     ty: TypeInfo,
     // Position in 'storage'
@@ -286,22 +313,30 @@ struct ComponentInfo {
 }
 
 /// Data of buffered 'entity' and its relative position in component data
+#[repr(C)]
+#[derive(StableAbi)]
 struct EntityIndex {
-    entity: Option<Entity>,
+    entity: ROption<Entity>,
     // Position of this entity's components in `CommandBuffer::info`
     //
     // We could store a single start point for the first initialized entity, rather than one for
     // each, but this would be more error prone for marginal space savings.
-    components: Range<usize>,
+    // components: Range<usize>,
+    component_range_start: usize,
+    component_range_end: usize,
 }
 
 /// Data required to remove components from 'entity'
+#[repr(C)]
+#[derive(StableAbi)]
 struct RemovedComps {
-    remove: fn(&mut World, Entity),
+    remove: extern "C" fn(&mut World, Entity),
     entity: Entity,
 }
 
 /// A buffered command
+#[repr(C)]
+#[derive(StableAbi)]
 enum Cmd {
     SpawnOrInsert(EntityIndex),
     Remove(RemovedComps),

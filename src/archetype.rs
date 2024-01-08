@@ -5,9 +5,11 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::alloc::alloc::{alloc, dealloc, Layout};
+// use crate::alloc::alloc::{alloc, dealloc, Layout};
+use crate::alloc::alloc::{alloc, dealloc};
 use crate::alloc::boxed::Box;
 use crate::alloc::{vec, vec::Vec};
+use crate::layout::Layout;
 use crate::std::string::ToString;
 // use core::any::{type_name, TypeId};
 use crate::stabletypeid::StableTypeId;
@@ -24,18 +26,25 @@ use crate::borrow::AtomicBorrow;
 use crate::query::Fetch;
 use crate::{Access, Component, ComponentRef, Query};
 
+use abi_stable::std_types::{RBox, RHashMap, RSlice, RStr, RVec, Tuple2};
+use abi_stable::StableAbi;
+
 /// A collection of entities having the same component types
 ///
 /// Accessing `Archetype`s is only required in niche cases. Typical use should go through the
 /// [`World`](crate::World).
+#[repr(C)]
+#[derive(StableAbi)]
 pub struct Archetype {
-    types: Vec<TypeInfo>,
-    type_ids: Box<[StableTypeId]>,
+    types: RVec<TypeInfo>,
+    // type_ids: RSlice<'a, StableTypeId>,
+    type_ids: RVec<StableTypeId>,
     index: OrderedStableTypeIdMap<usize>,
     len: u32,
-    entities: Box<[u32]>,
+    entities: RVec<u32>,
     /// One allocation per type, in the same order as `types`
-    data: Box<[Data]>,
+    // data: RSlice<'a, Data>,
+    data: RVec<Data>,
 }
 
 impl Archetype {
@@ -57,24 +66,45 @@ impl Archetype {
         });
     }
 
-    pub(crate) fn new(types: Vec<TypeInfo>) -> Self {
+    pub(crate) fn new(types: RVec<TypeInfo>) -> Self {
         let max_align = types.first().map_or(1, |ty| ty.layout.align());
         Self::assert_type_info(&types);
         let component_count = types.len();
+
+        // let type_ids_raw: Box<[StableTypeId]> = types.iter().map(|ty| ty.id()).collect();
+        let type_ids: RVec<StableTypeId> = types.iter().map(|ty| ty.id()).collect();
+        // let type_ids: RSlice<StableTypeId> = RSlice::from_slice(&type_ids_raw);
+        // let type_ids = RVec::from_slice(&type_ids_raw);
+
+        // let data_raw: Box<[Data]> = (0..component_count)
+        //     .map(|_| Data {
+        //         state: AtomicBorrow::new(),
+        //         storage: NonNull::new(max_align as *mut u8).unwrap(),
+        //         mutated_entities: RVec::new(),
+        //         added_entities: RVec::new(),
+        //     })
+        //     .collect();
+        // let data: RSlice<Data> = RSlice::from_slice(&*data_raw);
+        // let data = RVec::from_slice(&data);
+        let data: RVec<Data> = (0..component_count)
+            .map(|_| Data {
+                state: AtomicBorrow::new(),
+                storage: NonNull::new(max_align as *mut u8).unwrap(),
+                mutated_entities: RVec::new(),
+                added_entities: RVec::new(),
+            })
+            .collect();
+
         Self {
-            index: OrderedStableTypeIdMap::new(types.iter().enumerate().map(|(i, ty)| (ty.id, i))),
-            type_ids: types.iter().map(|ty| ty.id()).collect(),
+            // index: OrderedStableTypeIdMap::new(types.iter().enumerate().map(|(i, ty)| (ty.id, i))),
+            index: OrderedStableTypeIdMap::new(
+                types.iter().enumerate().map(|(i, ty)| Tuple2(ty.id, i)),
+            ),
+            type_ids,
             types,
-            entities: Box::new([]),
+            entities: RVec::new(),
             len: 0,
-            data: (0..component_count)
-                .map(|_| Data {
-                    state: AtomicBorrow::new(),
-                    storage: NonNull::new(max_align as *mut u8).unwrap(),
-                    mutated_entities: Vec::new(),
-                    added_entities: Vec::new(),
-                })
-                .collect(),
+            data,
         }
     }
 
@@ -316,9 +346,11 @@ impl Archetype {
         let new_cap = self.entities.len() + increment as usize;
         let mut new_entities = vec![!0; new_cap].into_boxed_slice();
         new_entities[0..old_count].copy_from_slice(&self.entities[0..old_count]);
-        self.entities = new_entities;
+        // let r_ent: RSlice<u32> = RSlice::from_slice(&new_entities);
+        let r_ent: RVec<u32> = RVec::from_slice(&new_entities);
+        self.entities = r_ent;
 
-        let new_data = self
+        let new_data: RVec<Data> = self
             .types
             .iter()
             .zip(&mut *self.data)
@@ -328,7 +360,7 @@ impl Archetype {
                 } else {
                     unsafe {
                         let mem = alloc(
-                            Layout::from_size_align(
+                            core::alloc::Layout::from_size_align(
                                 info.layout.size() * new_cap,
                                 info.layout.align(),
                             )
@@ -342,7 +374,7 @@ impl Archetype {
                         if old_cap > 0 {
                             dealloc(
                                 old.storage.as_ptr(),
-                                Layout::from_size_align(
+                                core::alloc::Layout::from_size_align(
                                     info.layout.size() * old_cap,
                                     info.layout.align(),
                                 )
@@ -352,10 +384,12 @@ impl Archetype {
                         NonNull::new(mem).unwrap()
                     }
                 };
-                let mut mutated_entities = old.mutated_entities.split_off(0);
-                mutated_entities.resize_with(new_cap, || false);
-                let mut added_entities = old.added_entities.split_off(0);
-                added_entities.resize_with(new_cap, || true);
+                // let mut mutated_entities = old.mutated_entities.split_off(0);
+                let mut mutated_entities: RVec<bool> = old.mutated_entities.drain(..).collect();
+                mutated_entities.resize(new_cap, false);
+                // let mut added_entities = old.added_entities.split_off(0);
+                let mut added_entities: RVec<bool> = old.added_entities.drain(..).collect();
+                added_entities.resize(new_cap, true);
                 Data {
                     state: AtomicBorrow::new(), // &mut self guarantees no outstanding borrows
                     storage,
@@ -363,8 +397,9 @@ impl Archetype {
                     added_entities,
                 }
             })
-            .collect::<Box<[_]>>();
+            .collect();
 
+        // self.data = RSlice::from_slice(&new_data);
         self.data = new_data;
     }
 
@@ -493,7 +528,7 @@ impl Drop for Archetype {
                 unsafe {
                     dealloc(
                         data.storage.as_ptr(),
-                        Layout::from_size_align_unchecked(
+                        core::alloc::Layout::from_size_align_unchecked(
                             info.layout.size() * self.entities.len(),
                             info.layout.align(),
                         ),
@@ -504,11 +539,13 @@ impl Drop for Archetype {
     }
 }
 
+#[repr(C)]
+#[derive(StableAbi)]
 struct Data {
     state: AtomicBorrow,
     storage: NonNull<u8>,
-    mutated_entities: Vec<bool>,
-    added_entities: Vec<bool>,
+    mutated_entities: RVec<bool>,
+    added_entities: RVec<bool>,
 }
 
 /// A hasher optimized for hashing a single StableTypeId.
@@ -554,19 +591,34 @@ impl Hasher for StableTypeIdHasher {
 /// which hashbrown needs), there is no need to hash it again. Instead, this uses the much
 /// faster no-op hash.
 pub(crate) type StableTypeIdMap<V> =
-    HashMap<StableTypeId, V, BuildHasherDefault<StableTypeIdHasher>>;
+    RHashMap<StableTypeId, V, BuildHasherDefault<StableTypeIdHasher>>;
 
-struct OrderedStableTypeIdMap<V>(Box<[(StableTypeId, V)]>);
+#[repr(C)]
+#[derive(StableAbi)]
+// struct OrderedStableTypeIdMap<'a, V>(RSlice<'a, Tuple2<StableTypeId, V>>);
+struct OrderedStableTypeIdMap<V>(RVec<Tuple2<StableTypeId, V>>);
 
 impl<V> OrderedStableTypeIdMap<V> {
-    fn new(iter: impl Iterator<Item = (StableTypeId, V)>) -> Self {
-        let mut vals = iter.collect::<Box<[_]>>();
-        vals.sort_unstable_by_key(|(id, _)| *id);
-        Self(vals)
+    fn new(iter: impl Iterator<Item = Tuple2<StableTypeId, V>>) -> Self {
+        // fn new(iter: impl Iterator<Item = (StableTypeId, V)>) -> Self {
+        // let mut vals = iter.collect::<Box<[_]>>();
+        let mut vals: RVec<Tuple2<StableTypeId, V>> = iter.collect();
+        // let vals_slice = vals.as_mut_slice()
+        // vals.sort_unstable_by_key(|(id, _)| *id);
+        vals.sort_unstable_by_key(|id| id.0);
+        // vals_slice.sort_unstable_by_key(|(id, _)| id.0);
+        // let rvals: RVec<Tuple2<StableTypeId, V>> = vals
+        //     .iter()
+        //     .map(|x| Tuple2::from_tuple((x.0, x.1)))
+        //     .collect();
+        let rvals = vals;
+        // vals.iter().map(|x| Tuple2::).collect();
+        // Self(RSlice::from_slice(&rvals))
+        Self(rvals)
     }
 
     fn search(&self, id: &StableTypeId) -> Option<usize> {
-        self.0.binary_search_by_key(id, |(id, _)| *id).ok()
+        self.0.binary_search_by_key(id, |Tuple2(id, _)| *id).ok()
     }
 
     fn contains_key(&self, id: &StableTypeId) -> bool {
@@ -584,18 +636,24 @@ impl<V> OrderedStableTypeIdMap<V> {
 /// [`Layout`], so that we know how to allocate memory for this component type; and a drop function
 /// which internally calls [`core::ptr::drop_in_place`] with the correct type parameter.
 #[derive(Debug, Copy, Clone)]
+#[repr(C)]
+#[derive(StableAbi)]
+// #[sabi(unsafe_opaque_fields)]
 pub struct TypeInfo {
     id: StableTypeId,
     layout: Layout,
-    drop: unsafe fn(*mut u8),
+    // drop: extern "C" unsafe fn(*mut u8),
+    drop: unsafe extern "C" fn(*mut u8),
+    // drop: unsafe fn(*mut u8),
     // #[cfg(debug_assertions)]
-    type_name: &'static str,
+    // type_name: &'static RStr<'static>,
+    type_name: RStr<'static>,
 }
 
 impl TypeInfo {
     /// Construct a `TypeInfo` directly from the static type.
     pub fn of<T: 'static>() -> Self {
-        unsafe fn drop_ptr<T>(x: *mut u8) {
+        unsafe extern "C" fn drop_ptr<T>(x: *mut u8) {
             x.cast::<T>().drop_in_place()
         }
 
@@ -603,8 +661,11 @@ impl TypeInfo {
             id: StableTypeId::of::<T>(),
             layout: Layout::new::<T>(),
             drop: drop_ptr::<T>,
+            // drop: unsafe { std::mem::transmute(drop_ptr::<T>) },
+            // drop: unsafe { drop_ptr::<T> as extern "C" fn(*mut u8) },
             // #[cfg(debug_assertions)]
-            type_name: core::any::type_name::<T>(),
+            // type_name: &'static RStr::from_str(&'static core::any::type_name::<T>()),
+            type_name: RStr::from_str(core::any::type_name::<T>()),
         }
     }
 
@@ -612,15 +673,15 @@ impl TypeInfo {
     /// some kind of pointer to raw bytes/erased memory holding a component type, coming from a
     /// source unrelated to hecs, and you want to treat it as an insertable component by
     /// implementing the `DynamicBundle` API.
-    pub fn from_parts(id: StableTypeId, layout: Layout, drop: unsafe fn(*mut u8)) -> Self {
-        Self {
-            id,
-            layout,
-            drop,
-            // #[cfg(debug_assertions)]
-            type_name: "<unknown> (TypeInfo constructed from parts)",
-        }
-    }
+    // pub fn from_parts(id: StableTypeId, layout: Layout, drop: unsafe fn(*mut u8)) -> Self {
+    //     Self {
+    //         id,
+    //         layout,
+    //         drop,
+    //         // #[cfg(debug_assertions)]
+    //         type_name: "<unknown> (TypeInfo constructed from parts)",
+    //     }
+    // }
 
     /// Access the `StableTypeId` for this component type.
     pub fn id(&self) -> StableTypeId {
@@ -649,7 +710,7 @@ impl TypeInfo {
 
     /// Get the function pointer encoding the destructor for the component type this `TypeInfo`
     /// represents.
-    pub fn drop_shim(&self) -> unsafe fn(*mut u8) {
+    pub fn drop_shim(&self) -> unsafe extern "C" fn(*mut u8) {
         self.drop
     }
 }

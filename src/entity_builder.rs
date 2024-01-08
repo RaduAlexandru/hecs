@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::alloc::alloc::{alloc, dealloc, Layout};
+use crate::alloc::alloc::{alloc, dealloc};
 use crate::alloc::vec::Vec;
 use crate::bundle::{DynamicBundleClone, DynamicClone};
+use crate::Layout;
 // use core::any::StableTypeId;
 use crate::stabletypeid::StableTypeId;
 use core::ptr::{self, NonNull};
 
+use abi_stable::std_types::map::REntry;
 use hashbrown::hash_map::Entry;
 
 use crate::archetype::{StableTypeIdMap, TypeInfo};
@@ -329,7 +331,9 @@ impl<M> Common<M> {
         storage: NonNull<u8>,
     ) -> (NonNull<u8>, Layout) {
         let layout = Layout::from_size_align(min_size.next_power_of_two().max(64), align).unwrap();
-        let new_storage = NonNull::new_unchecked(alloc(layout));
+        let core_layout =
+            core::alloc::Layout::from_size_align(layout.size(), layout.align()).unwrap();
+        let new_storage = NonNull::new_unchecked(alloc(core_layout));
         ptr::copy_nonoverlapping(storage.as_ptr(), new_storage.as_ptr(), cursor);
         (new_storage, layout)
     }
@@ -347,7 +351,7 @@ impl<M> Common<M> {
 
     unsafe fn add(&mut self, ptr: *mut u8, ty: TypeInfo, meta: M) {
         match self.indices.entry(ty.id()) {
-            Entry::Occupied(occupied) => {
+            REntry::Occupied(occupied) => {
                 let index = *occupied.get();
                 let (ty, offset, _) = self.info[index];
                 let storage = self.storage.as_ptr().add(offset);
@@ -358,7 +362,7 @@ impl<M> Common<M> {
                 // Overwrite the old value with our new one.
                 ptr::copy_nonoverlapping(ptr, storage, ty.layout().size());
             }
-            Entry::Vacant(vacant) => {
+            REntry::Vacant(vacant) => {
                 let offset = align(self.cursor, ty.layout().align());
                 let end = offset + ty.layout().size();
                 if end > self.layout.size() || ty.layout().align() > self.layout.align() {
@@ -366,7 +370,12 @@ impl<M> Common<M> {
                     let (new_storage, new_layout) =
                         Self::grow(end, self.cursor, new_align, self.storage);
                     if self.layout.size() != 0 {
-                        dealloc(self.storage.as_ptr(), self.layout);
+                        let core_layout = core::alloc::Layout::from_size_align(
+                            self.layout.size(),
+                            self.layout.align(),
+                        )
+                        .unwrap();
+                        dealloc(self.storage.as_ptr(), core_layout);
                     }
                     self.storage = new_storage;
                     self.layout = new_layout;
@@ -392,7 +401,10 @@ impl<M> Drop for Common<M> {
         self.clear();
         if self.layout.size() != 0 {
             unsafe {
-                dealloc(self.storage.as_ptr(), self.layout);
+                let core_layout =
+                    core::alloc::Layout::from_size_align(self.layout.size(), self.layout.align())
+                        .unwrap();
+                dealloc(self.storage.as_ptr(), core_layout);
             }
         }
     }
@@ -415,8 +427,11 @@ impl<M> Default for Common<M> {
 impl Clone for Common<DynamicClone> {
     fn clone(&self) -> Self {
         unsafe {
+            let core_layout =
+                core::alloc::Layout::from_size_align(self.layout.size(), self.layout.align())
+                    .unwrap();
             let result = Common {
-                storage: NonNull::new_unchecked(alloc(self.layout)),
+                storage: NonNull::new_unchecked(alloc(core_layout)),
                 layout: self.layout,
                 cursor: self.cursor,
                 info: self.info.clone(),

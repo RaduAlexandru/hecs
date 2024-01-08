@@ -1,3 +1,5 @@
+use abi_stable::std_types::{RBox, RString, RVec};
+use abi_stable::StableAbi;
 use alloc::vec::Vec;
 use core::cmp;
 use core::convert::TryFrom;
@@ -16,6 +18,9 @@ use std::error::Error;
 /// Enable the `serde` feature on the crate to make this `Serialize`able. Some applications may be
 /// able to save space by only serializing the output of `Entity::id`.
 #[derive(Clone, Copy, Hash, Eq, Ord, PartialEq, PartialOrd)]
+#[repr(C)]
+#[derive(StableAbi)]
+#[sabi(missing_field(panic))]
 pub struct Entity {
     pub(crate) generation: NonZeroU32,
     pub(crate) id: u32,
@@ -144,8 +149,10 @@ impl<'a> Iterator for ReserveEntitiesIterator<'a> {
 impl<'a> ExactSizeIterator for ReserveEntitiesIterator<'a> {}
 
 #[derive(Default)]
+#[repr(C)]
+#[derive(StableAbi)]
 pub(crate) struct Entities {
-    pub meta: Vec<EntityMeta>,
+    pub meta: RVec<EntityMeta>,
 
     // The `pending` and `free_cursor` fields describe three sets of Entity IDs
     // that have been freed or are in the process of being allocated:
@@ -182,7 +189,7 @@ pub(crate) struct Entities {
     // and then from the new IDs, using only a single atomic subtract.
     //
     // Once `flush()` is done, `free_cursor` will equal `pending.len()`.
-    pending: Vec<u32>,
+    pending: RVec<u32>,
     free_cursor: AtomicIsize,
     len: u32,
 }
@@ -530,6 +537,8 @@ impl Entities {
 }
 
 #[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(StableAbi)]
 pub(crate) struct EntityMeta {
     pub generation: NonZeroU32,
     pub location: Location,
@@ -549,6 +558,8 @@ impl EntityMeta {
 }
 
 #[derive(Copy, Clone)]
+#[repr(C)]
+#[derive(StableAbi)]
 pub(crate) struct Location {
     pub archetype: u32,
     pub index: u32,

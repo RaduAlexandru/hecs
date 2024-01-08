@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use abi_stable::std_types::{RBox, RHashMap, RSlice, RVec};
+use abi_stable::StableAbi;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 /// A bit mask used to signal the `AtomicBorrow` has an active mutable borrow.
@@ -22,6 +24,8 @@ const COUNTER_MASK: usize = usize::max_value() >> 1;
 ///  - `0b0_______...` the counter isn't mut borrowed, and currently borrowed
 ///  - `0b10000000...` the counter is mut borrowed
 ///  - `0b1_______...` the counter is mut borrowed, and some other thread is trying to borrow
+#[repr(C)]
+#[derive(StableAbi)]
 pub struct AtomicBorrow(AtomicUsize);
 
 impl AtomicBorrow {

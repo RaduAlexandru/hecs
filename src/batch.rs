@@ -6,6 +6,8 @@ use crate::{
     archetype::{StableTypeIdMap, TypeInfo},
     Archetype, Component,
 };
+use abi_stable::std_types::{RBox, RHashMap, RSlice, RVec};
+use abi_stable::StableAbi;
 
 /// A collection of component types
 #[derive(Debug, Clone, Default)]
@@ -30,7 +32,7 @@ impl ColumnBatchType {
         let mut types = self.types.into_sorted_vec();
         types.dedup();
         let fill = StableTypeIdMap::with_capacity_and_hasher(types.len(), Default::default());
-        let mut arch = Archetype::new(types);
+        let mut arch = Archetype::new(RVec::from(types));
         arch.reserve(size);
         ColumnBatchBuilder {
             fill,

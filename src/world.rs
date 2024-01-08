@@ -8,6 +8,7 @@
 use crate::alloc::{vec, vec::Vec};
 // use core::any::StableTypeId;
 use crate::stabletypeid::StableTypeId;
+use abi_stable::std_types::map::REntry;
 use core::borrow::Borrow;
 use core::convert::TryFrom;
 use core::hash::{BuildHasherDefault, Hasher};
@@ -29,6 +30,8 @@ use crate::{
     Bundle, ColumnBatch, ComponentRef, DynamicBundle, Entity, EntityRef, Fetch, MissingComponent,
     NoSuchEntity, Query, QueryBorrow, QueryItem, QueryMut, QueryOne, TakenEntity,
 };
+use abi_stable::std_types::{RBox, RHashMap, RSlice, RVec, Tuple2};
+use abi_stable::StableAbi;
 
 /// An unordered collection of entities, each having any number of distinctly typed components
 ///
@@ -48,6 +51,8 @@ use crate::{
 /// following spawns and despawns, that handle may, in rare circumstances, collide with a
 /// newly-allocated `Entity` handle. Very long-lived applications should therefore limit the period
 /// over which they may retain handles of despawned entities.
+#[repr(C)]
+#[derive(StableAbi)]
 pub struct World {
     entities: Entities,
     archetypes: ArchetypeSet,
@@ -60,7 +65,7 @@ pub struct World {
     /// after removing the components from that bundle.
     remove_edges: IndexStableTypeIdMap<u32>,
     id: u64,
-    removed_components: HashMap<StableTypeId, Vec<Entity>>,
+    removed_components: RHashMap<StableTypeId, RVec<Entity>>,
 }
 
 impl World {
@@ -78,11 +83,11 @@ impl World {
         Self {
             entities: Entities::default(),
             archetypes: ArchetypeSet::new(),
-            bundle_to_archetype: HashMap::default(),
-            insert_edges: HashMap::default(),
-            remove_edges: HashMap::default(),
+            bundle_to_archetype: RHashMap::default(),
+            insert_edges: RHashMap::default(),
+            remove_edges: RHashMap::default(),
             id,
-            removed_components: HashMap::default(),
+            removed_components: RHashMap::default(),
         }
     }
 
@@ -160,10 +165,14 @@ impl World {
             Some(k) => {
                 let archetypes = &mut self.archetypes;
                 *self.bundle_to_archetype.entry(k).or_insert_with(|| {
-                    components.with_ids(|ids| archetypes.get(ids, || components.type_info()))
+                    components
+                        .with_ids(|ids| archetypes.get(ids, || RVec::from(components.type_info())))
                 })
             }
-            None => components.with_ids(|ids| self.archetypes.get(ids, || components.type_info())),
+            None => components.with_ids(|ids| {
+                self.archetypes
+                    .get(ids, || RVec::from(components.type_info()))
+            }),
         };
 
         let archetype = &mut self.archetypes.archetypes[archetype_id as usize];
@@ -319,7 +328,7 @@ impl World {
             let removed_entities = self
                 .removed_components
                 .entry(ty.id())
-                .or_insert_with(Vec::new);
+                .or_insert_with(RVec::new);
             removed_entities.push(entity);
         }
         Ok(())
@@ -340,7 +349,9 @@ impl World {
             .entry(StableTypeId::of::<T>())
             .or_insert_with(|| {
                 T::with_static_ids(|ids| {
-                    archetypes.get(ids, || T::with_static_type_info(|info| info.to_vec()))
+                    archetypes.get(ids, || {
+                        T::with_static_type_info(|info| RVec::from(info.to_vec()))
+                    })
                 })
             });
 
@@ -362,7 +373,7 @@ impl World {
                 let removed_entities = self
                     .removed_components
                     .entry(ty.id())
-                    .or_insert_with(Vec::new);
+                    .or_insert_with(RVec::new);
                 removed_entities.extend(archetype_entities);
             }
         }
@@ -612,9 +623,9 @@ impl World {
                 target_storage = self.archetypes.get_insert_target(graph_origin, &components);
                 &target_storage
             }
-            Some(key) => match self.insert_edges.entry((graph_origin, key)) {
-                Entry::Occupied(entry) => entry.into_mut(),
-                Entry::Vacant(entry) => {
+            Some(key) => match self.insert_edges.entry(Tuple2(graph_origin, key)) {
+                REntry::Occupied(entry) => entry.into_mut(),
+                REntry::Vacant(entry) => {
                     let target = self.archetypes.get_insert_target(graph_origin, &components);
                     entry.insert(target)
                 }
@@ -766,7 +777,7 @@ impl World {
                             .add(target_index as usize) = is_mutated;
                     } else {
                         let removed_entities =
-                            removed_components.entry(ty).or_insert_with(Vec::new);
+                            removed_components.entry(ty).or_insert_with(RVec::new);
                         removed_entities.push(entity);
                     }
                 })
@@ -783,9 +794,9 @@ impl World {
         remove_edges: &mut IndexStableTypeIdMap<u32>,
         old_archetype: u32,
     ) -> u32 {
-        match remove_edges.entry((old_archetype, StableTypeId::of::<T>())) {
-            Entry::Occupied(entry) => *entry.into_mut(),
-            Entry::Vacant(entry) => {
+        match remove_edges.entry(Tuple2(old_archetype, StableTypeId::of::<T>())) {
+            REntry::Occupied(entry) => *entry.into_mut(),
+            REntry::Vacant(entry) => {
                 let info = T::with_static_type_info(|removed| {
                     archetypes.archetypes[old_archetype as usize]
                         .types()
@@ -795,7 +806,8 @@ impl World {
                         .collect::<Vec<_>>()
                 });
                 let elements = info.iter().map(|x| x.id()).collect::<Box<_>>();
-                let index = archetypes.get(&*elements, move || info);
+                let r_info = RVec::from(info);
+                let index = archetypes.get(&*elements, move || r_info);
                 *entry.insert(index)
             }
         }
@@ -1251,37 +1263,55 @@ impl Drop for SpawnColumnBatchIter<'_> {
     }
 }
 
+#[repr(C)]
+#[derive(StableAbi)]
 struct ArchetypeSet {
     /// Maps sorted component type sets to archetypes
-    index: HashMap<Box<[StableTypeId]>, u32>,
-    archetypes: Vec<Archetype>,
+    // index: RHashMap<RSlice<'a, StableTypeId>, u32>,
+    index: RHashMap<RVec<StableTypeId>, u32>,
+    // index: HashMap<Box<[StableTypeId]>, u32>,
+    archetypes: RVec<Archetype>,
 }
 
 impl ArchetypeSet {
     fn new() -> Self {
         // `flush` assumes archetype 0 always exists, representing entities with no components.
+        let arch = Archetype::new(RVec::new());
+        let mut archs = RVec::new();
+        archs.push(arch);
         Self {
-            index: Some((Box::default(), 0)).into_iter().collect(),
-            archetypes: vec![Archetype::new(Vec::new())],
+            // index: Some((Box::default(), 0)).into_iter().collect(),
+            // index: Some((RSlice::default(), 0)).into_iter().collect(),
+            index: Some((RVec::default(), 0)).into_iter().collect(),
+            archetypes: archs,
         }
     }
 
     /// Find the archetype ID that has exactly `components`
+    // fn get<T: Borrow<[StableTypeId]> + for<'b> Into<RSlice<'b, StableTypeId>>>(
     fn get<T: Borrow<[StableTypeId]> + Into<Box<[StableTypeId]>>>(
         &mut self,
         components: T,
-        info: impl FnOnce() -> Vec<TypeInfo>,
+        info: impl FnOnce() -> RVec<TypeInfo>,
     ) -> u32 {
+        // let borrow = components.borrow();
+        // let comps_boxed: Box<[StableTypeId]> = components.into();
+        // let r_comps = RSlice::from(&*comps_boxed);
         self.index
-            .get(components.borrow())
+            // .get(&RSlice::from_slice(components.borrow()))
+            .get(&RVec::from_slice(components.borrow()))
             .copied()
+            // .unwrap_or_else(|| self.insert(RSlice::from(&*components.into()), info()))
             .unwrap_or_else(|| self.insert(components.into(), info()))
     }
 
-    fn insert(&mut self, components: Box<[StableTypeId]>, info: Vec<TypeInfo>) -> u32 {
+    // fn insert(&mut self, components: RSlice<'_, StableTypeId>, info: RVec<TypeInfo>) -> u32 {
+    fn insert(&mut self, components: Box<[StableTypeId]>, info: RVec<TypeInfo>) -> u32 {
         let x = self.archetypes.len() as u32;
         self.archetypes.push(Archetype::new(info));
-        let old = self.index.insert(components, x);
+        // let r_comps = RSlice::from(&*components);
+        let r_comps = RVec::from(&*components);
+        let old = self.index.insert(r_comps, x);
         debug_assert!(old.is_none(), "inserted duplicate archetype");
         x
     }
@@ -1294,8 +1324,11 @@ impl ArchetypeSet {
             .map(|info| info.id())
             .collect::<Box<_>>();
 
-        match self.index.entry(ids) {
-            Entry::Occupied(x) => {
+        // let r_ids: RSlice<StableTypeId> = RSlice::from(&*ids);
+        let r_ids = RVec::from(&*ids);
+
+        match self.index.entry(r_ids) {
+            REntry::Occupied(x) => {
                 // Duplicate of existing archetype
                 let existing = &mut self.archetypes[*x.get() as usize];
                 let base = existing.len();
@@ -1304,7 +1337,7 @@ impl ArchetypeSet {
                 }
                 (*x.get(), base)
             }
-            Entry::Vacant(x) => {
+            REntry::Vacant(x) => {
                 // Brand new archetype
                 let id = self.archetypes.len() as u32;
                 self.archetypes.push(archetype);
@@ -1322,8 +1355,8 @@ impl ArchetypeSet {
         // Assemble Vec<TypeInfo> for the final entity
         let arch = &mut self.archetypes[src as usize];
         let mut info = arch.types().to_vec();
-        let mut replaced = Vec::new(); // Elements in both archetype.types() and components.type_info()
-        let mut retained = Vec::new(); // Elements in archetype.types() but not components.type_info()
+        let mut replaced = RVec::new(); // Elements in both archetype.types() and components.type_info()
+        let mut retained = RVec::new(); // Elements in archetype.types() but not components.type_info()
 
         // Because both `components.type_info()` and `arch.types()` are
         // ordered, we can identify elements in one but not the other efficiently with parallel
@@ -1346,8 +1379,11 @@ impl ArchetypeSet {
         retained.extend_from_slice(&arch.types()[src_ty..]);
 
         // Find the archetype it'll live in
-        let elements = info.iter().map(|x| x.id()).collect::<Box<_>>();
-        let index = self.get(elements, move || info);
+        // let elements = info.iter().map(|x| x.id()).collect::<Box<_>>();
+        let elements: Box<[StableTypeId]> = info.iter().map(|x| x.id()).collect();
+        // let r_elements: RSlice<StableTypeId> = RSlice::from(&*elements);
+        let r_info = RVec::from(info);
+        let index = self.get(elements, move || r_info);
         InsertTarget {
             replaced,
             retained,
@@ -1357,17 +1393,19 @@ impl ArchetypeSet {
 }
 
 /// Metadata cached for inserting components into entities from this archetype
+#[repr(C)]
+#[derive(StableAbi)]
 struct InsertTarget {
     /// Components from the current archetype that are replaced by the insert
-    replaced: Vec<TypeInfo>,
+    replaced: RVec<TypeInfo>,
     /// Components from the current archetype that are moved by the insert
-    retained: Vec<TypeInfo>,
+    retained: RVec<TypeInfo>,
     /// ID of the target archetype
     index: u32,
 }
 
 type IndexStableTypeIdMap<V> =
-    HashMap<(u32, StableTypeId), V, BuildHasherDefault<IndexStableTypeIdHasher>>;
+    RHashMap<Tuple2<u32, StableTypeId>, V, BuildHasherDefault<IndexStableTypeIdHasher>>;
 
 #[derive(Default)]
 struct IndexStableTypeIdHasher(u64);

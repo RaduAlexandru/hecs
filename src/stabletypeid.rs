@@ -10,6 +10,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use crate::Component;
+use abi_stable::StableAbi;
 
 // struct StableStableTypeId {}
 // impl StableStableTypeId {
@@ -19,8 +20,10 @@ use crate::Component;
 // }
 
 #[derive(Clone, Copy, Debug, Eq, PartialOrd, Ord)]
+#[repr(C)]
+#[derive(StableAbi)]
 pub struct StableTypeId {
-    t: u128,
+    t: u64,
 }
 
 impl PartialEq for StableTypeId {
@@ -57,6 +60,6 @@ impl StableTypeId {
         let mut s = DefaultHasher::new();
         name.hash(&mut s);
         let hashed = s.finish();
-        Self { t: hashed as u128 }
+        Self { t: hashed }
     }
 }

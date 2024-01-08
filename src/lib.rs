@@ -56,6 +56,7 @@ macro_rules! smaller_tuples_too {
     };
 }
 
+mod alignment;
 mod archetype;
 mod batch;
 mod borrow;
@@ -64,6 +65,7 @@ mod command_buffer;
 mod entities;
 mod entity_builder;
 mod entity_ref;
+mod layout;
 mod query;
 mod query_one;
 #[cfg(any(feature = "row-serialize", feature = "column-serialize"))]
@@ -73,6 +75,7 @@ mod take;
 mod tracked;
 mod world;
 
+pub use alignment::Alignment;
 pub use archetype::{Archetype, ArchetypeColumn, ArchetypeColumnMut};
 pub use batch::{BatchIncomplete, BatchWriter, ColumnBatch, ColumnBatchBuilder, ColumnBatchType};
 pub use bundle::{Bundle, DynamicBundle, DynamicBundleClone, MissingComponent};
@@ -80,6 +83,7 @@ pub use command_buffer::CommandBuffer;
 pub use entities::{Entity, NoSuchEntity};
 pub use entity_builder::{BuiltEntity, BuiltEntityClone, EntityBuilder, EntityBuilderClone};
 pub use entity_ref::{ComponentRef, ComponentRefShared, EntityRef, Ref, RefMut};
+pub use layout::Layout;
 pub use query::{
     Access, Batch, BatchedIter, Or, PreparedQuery, PreparedQueryBorrow, PreparedQueryIter,
     PreparedView, Query, QueryBorrow, QueryItem, QueryIter, QueryMut, QueryShared, Satisfies, View,
