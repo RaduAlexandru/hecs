@@ -2,7 +2,7 @@
 // for this we neeed a stable id
 // more info: https://github.com/bevyengine/bevy/issues/32
 // https://github.com/PyO3/pyo3/issues/1444
-// inspired by the original implementation of StableTypeId in rust
+// inspired by the original implementation of TypeId in rust
 
 use core::any::TypeId;
 
@@ -11,6 +11,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::Component;
 use abi_stable::StableAbi;
+use identity_hash::IdentityHasher;
 
 // struct StableStableTypeId {}
 // impl StableStableTypeId {
@@ -18,6 +19,9 @@ use abi_stable::StableAbi;
 //         let StableTypeId = StableTypeId::
 //     }
 // }
+
+// #[cfg(feature = "unsafe_typeid")]
+// pub type StableTypeId as TypeId;
 
 #[derive(Clone, Copy, Debug, Eq, PartialOrd, Ord)]
 #[repr(C)]
@@ -55,11 +59,22 @@ impl Hash for StableTypeId {
 impl StableTypeId {
     pub fn of<T: ?Sized + 'static>() -> Self {
         // let t: u128 = intrinsics::type_id::<T>();
-        let name = core::any::type_name::<T>();
-        // let hashed = fnv1a_hash_str_128(name);
-        let mut s = DefaultHasher::new();
-        name.hash(&mut s);
-        let hashed = s.finish();
-        Self { t: hashed }
+        #[cfg(not(feature = "unsafe_typeid"))]
+        {
+            let name = core::any::type_name::<T>();
+            let mut s = DefaultHasher::new();
+            name.hash(&mut s);
+            let hashed = s.finish();
+            Self { t: hashed }
+        }
+        #[cfg(feature = "unsafe_typeid")]
+        {
+            let ty = TypeId::of::<T>();
+            //I want to get a u64 from the ty.t but since I can't access it I can just use an identity hasher because I know that the hasher just gives as intput the u64 that I want
+            let mut hasher = IdentityHasher::<u64>::default();
+            ty.hash(&mut hasher);
+            let hashed = hasher.finish();
+            Self { t: hashed }
+        }
     }
 }

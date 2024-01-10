@@ -27,6 +27,8 @@ macros = ["hecs-macros", "lazy_static"]
 column-serialize = ["serde"]
 # Enables the serialize::row module
 row-serialize = ["serde"]
+#enable non-abi safe typeid. Useful for wasm where we won't need to dynamically load libraries anyways so we don't care about the abi
+unsafe_typeid = []
 
 [dependencies]
 hecs-macros = { path = "macros", version = "0.8.2", optional = true }
@@ -38,6 +40,7 @@ negative-impl = "0.1"
 # const-fnv1a-hash = "1.1"
 # abi_stable= "0.11"
 abi_stable = {git = "https://github.com/RaduAlexandru/abi_stable_crates.git", version = "0.11.3"}
+identity-hash = "0.1"
 
 [dev-dependencies]
 bencher = "0.1.5"
