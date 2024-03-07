@@ -234,6 +234,39 @@ impl<'a, T: Component> RefMut<'a, T> {
     pub fn is_changed(&self) -> bool {
         self.is_added() || self.is_mutated()
     }
+    pub fn remove_added(&mut self) {
+        unsafe {
+            *self
+                .archetype
+                .get_added(self.state)
+                .as_ptr()
+                .add(self.index as usize) = false
+        }
+    }
+    //keep this one private to the crate because it makes things confusing. I only want added and changed. Changed will be true if it's either added or mutated
+    pub(crate) fn remove_mutated(&mut self) {
+        unsafe {
+            *self
+                .archetype
+                .get_mutated(self.state)
+                .as_ptr()
+                .add(self.index as usize) = false
+        }
+    }
+    pub fn remove_changed(&mut self) {
+        self.remove_added();
+        self.remove_mutated();
+    }
+    // //keep this one private to the crate because it makes things confusing. I only want added and changed. Changed will be true if it's either added or mutated
+    // pub(crate) fn is_mutated(&self) -> bool {
+    //     unsafe {
+    //         *self
+    //             .archetype
+    //             .get_mutated(self.state)
+    //             .as_ptr()
+    //             .add(self.index as usize)
+    //     }
+    // }
 }
 
 unsafe impl<T: Component> Send for RefMut<'_, T> {}
